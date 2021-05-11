@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: opentel-gcp-svc
+  labels:
+    app: opentel-gcp
+spec:
+  ports:
+    - port: 8080
+      name: http
+      protocol: TCP
+  selector:
+    app: opentel-gcp
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opentel-gcp-deployment
+  labels:
+    app: opentel-gcp
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opentel-gcp
+  template:
+    metadata:
+      labels:
+        app: opentel-gcp
+    spec:
+      containers:
+        - name: opentel-gcp
+          image: gcr.io/experiments-310518/opentel-gcp-pubsub:latest
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/google/key.json
+            - name: JAVA_TOOL_OPTIONS
+              value: -javaagent:BOOT-INF/lib/opentelemetry-javaagent-1.1.0.jar -Dotel.resource.attributes=service.name=opentel-gcp -Dotel.metrics.exporter=none -Dotel.traces.exporter=zipkin -Dotel.exporter.zipkin.endpoint=http://collector.linkerd-jaeger:9411/api/v2/spans
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: google-cloud-key
+              mountPath: "/var/secrets/google"
+              readOnly: true
+      volumes:
+        - name: google-cloud-key
+          secret:
+            secretName: pubsub-sa
+            items:
+              - key: credentials
+                path: key.json
